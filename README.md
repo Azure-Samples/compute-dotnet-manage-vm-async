@@ -4,7 +4,7 @@ platforms: .Net
 author: hovsepm
 ---
 
-#Getting Started with Compute - Manage Virtual Machine Async - in .Net #
+# Getting Started with Compute - Manage Virtual Machine Async - in .Net #
 
           Azure Compute sample for managing virtual machines -
            - Create a virtual machine with managed OS Disk based on Windows OS image
