@@ -1,0 +1,4 @@
+C:\Sources\dotnet-samples\compute-dotnet-manage-vm-async\bin\Debug\net452\ManageVirtualMachineAsync.runtimeconfig.json
+C:\Sources\dotnet-samples\compute-dotnet-manage-vm-async\bin\Debug\net452\ManageVirtualMachineAsync.runtimeconfig.dev.json
+C:\Sources\dotnet-samples\compute-dotnet-manage-vm-async\obj\Debug\net452\ManageVirtualMachineAsync.csproj.ManageVirtualMachineAsync.exe.config
+C:\Sources\dotnet-samples\compute-dotnet-manage-vm-async\obj\Debug\net452\ManageVirtualMachineAsync.csproj.CoreCompileInputs.cache
