@@ -29,10 +29,10 @@ Set the environment variable `AZURE_AUTH_LOCATION` with the full path for an aut
     git clone https://github.com/Azure-Samples/compute-dotnet-manage-vm-async.git
 
     cd compute-dotnet-manage-vm-async
-
-    dotnet restore
-
-    dotnet run
+  
+    dotnet build
+    
+    bin\Debug\net452\ManageVirtualMachineAsync.exe
 
 ## More information ##
 
