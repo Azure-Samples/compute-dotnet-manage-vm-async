@@ -4,25 +4,25 @@ languages:
 - csharp
 products:
 - azure
-services: Compute
-platforms: dotnet
-author: yaohaizh
+extensions:
+- services: Compute
+- platforms: dotnet
 ---
 
 # Getting Started with Compute - Manage Virtual Machines - in C# asynchronously #
 
-          Azure Compute sample for managing virtual machines -
-           - Create a virtual machine with managed OS Disk based on Windows OS image
-           - Once Network is created start creation of virtual machine based on Linux OS image in the same network
-           - Update both virtual machines
-             - for Linux based:
-               - add Tag
-             - for Windows based:
-               - deallocate the virtual machine
-               - add a data disk
-               - start the virtual machine
-           - List virtual machines and print details
-           - Delete all virtual machines.
+ Azure Compute sample for managing virtual machines -
+  - Create a virtual machine with managed OS Disk based on Windows OS image
+  - Once Network is created start creation of virtual machine based on Linux OS image in the same network
+  - Update both virtual machines
+    - for Linux based:
+      - add Tag
+    - for Windows based:
+      - deallocate the virtual machine
+      - add a data disk
+      - start the virtual machine
+  - List virtual machines and print details
+  - Delete all virtual machines.
 
 
 ## Running this Sample ##
