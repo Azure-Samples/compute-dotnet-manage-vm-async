@@ -5,8 +5,8 @@ languages:
 products:
 - azure
 extensions:
-- services: Compute
-- platforms: dotnet
+  services: Compute
+  platforms: dotnet
 ---
 
 # Getting Started with Compute - Manage Virtual Machines - in C# asynchronously #
