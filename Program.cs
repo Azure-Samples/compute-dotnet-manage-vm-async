@@ -11,9 +11,6 @@ using Azure.ResourceManager.Network;
 using Azure.ResourceManager.Network.Models;
 using Azure.ResourceManager.Resources;
 using Azure.ResourceManager.Samples.Common;
-using Azure.ResourceManager.Storage;
-using Azure.ResourceManager.Storage.Models;
-using System.Security.Cryptography.X509Certificates;
 
 namespace ManageVirtualMachineAsync
 {
