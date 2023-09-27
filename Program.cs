@@ -1,14 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
-using Microsoft.Azure.Management.Compute.Fluent;
-using Microsoft.Azure.Management.Compute.Fluent.Models;
-using Microsoft.Azure.Management.Fluent;
-using Microsoft.Azure.Management.ResourceManager.Fluent;
-using Microsoft.Azure.Management.ResourceManager.Fluent.Core;
-using Microsoft.Azure.Management.Samples.Common;
-using System;
-using System.Threading.Tasks;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager;
+using Azure.ResourceManager.Compute;
+using Azure.ResourceManager.Compute.Models;
+using Azure.ResourceManager.Network;
+using Azure.ResourceManager.Network.Models;
+using Azure.ResourceManager.Resources;
+using Azure.ResourceManager.Samples.Common;
+using Azure.ResourceManager.Storage;
+using Azure.ResourceManager.Storage.Models;
+using System.Security.Cryptography.X509Certificates;
 
 namespace ManageVirtualMachineAsync
 {
@@ -28,12 +33,21 @@ namespace ManageVirtualMachineAsync
          *  - List virtual machines and print details
          *  - Delete all virtual machines.
          */
-        public async static Task RunSampleAsync(IAzure azure)
+
+        private static ResourceIdentifier? _resourceGroupId = null;
+
+        public static async Task RunSample(ArmClient client)
         {
-            var region = Region.USWestCentral;
+            var region = AzureLocation.WestCentralUS;
             var windowsVmName = Utilities.CreateRandomName("wVM");
             var linuxVmName = Utilities.CreateRandomName("lVM");
             var rgName = Utilities.CreateRandomName("rgCOMV");
+            var subnetName = Utilities.CreateRandomName("sub");
+            var vnetName = Utilities.CreateRandomName("vnet");
+            var ipConfigName = Utilities.CreateRandomName("config");
+            var nicName = Utilities.CreateRandomName("nic");
+            var ipConfigName2 = Utilities.CreateRandomName("config");
+            var nicName2 = Utilities.CreateRandomName("nic");
             var userName = Utilities.CreateUsername();
             var password = Utilities.CreatePassword();
 
@@ -42,148 +56,301 @@ namespace ManageVirtualMachineAsync
                 //=============================================================
                 // Create a Windows virtual machine
 
-                // Prepare a creatable data disk for VM
+                //============================================================
+                // Create resource group
                 //
-                var dataDiskCreatable = azure.Disks.Define(Utilities.CreateRandomName("dsk-"))
-                        .WithRegion(region)
-                        .WithExistingResourceGroup(rgName)
-                        .WithData()
-                        .WithSizeInGB(100);
+                var subscription = await client.GetDefaultSubscriptionAsync();
+                var resourceGroupData = new ResourceGroupData(AzureLocation.SouthCentralUS);
+                var resourceGroup = (await subscription.GetResourceGroups()
+                    .CreateOrUpdateAsync(WaitUntil.Completed, rgName, resourceGroupData)).Value;
+                _resourceGroupId = resourceGroup.Id;
 
                 // Create a data disk to attach to VM
                 //
-                var dataDisk = await azure.Disks.Define(Utilities.CreateRandomName("dsk-"))
-                        .WithRegion(region)
-                        .WithNewResourceGroup(rgName)
-                        .WithData()
-                        .WithSizeInGB(50)
-                        .CreateAsync();
+                var diskData = new ManagedDiskData(region)
+                {
+                    DiskSizeGB = 50,
+                    CreationData = new DiskCreationData(DiskCreateOption.Empty)
+                };
+                var dataDisk = (await resourceGroup.GetManagedDisks()
+                    .CreateOrUpdateAsync(WaitUntil.Completed, Utilities.CreateRandomName("dsk-"), diskData)).Value;
 
                 Utilities.Log("Creating a Windows VM");
 
                 var t1 = new DateTime();
 
-                var windowsVM = await azure.VirtualMachines.Define(windowsVmName)
-                        .WithRegion(region)
-                        .WithNewResourceGroup(rgName)
-                        .WithNewPrimaryNetwork("10.0.0.0/28")
-                        .WithPrimaryPrivateIPAddressDynamic()
-                        .WithoutPrimaryPublicIPAddress()
-                        .WithPopularWindowsImage(KnownWindowsVirtualMachineImage.WindowsServer2012R2Datacenter)
-                        .WithAdminUsername(userName)
-                        .WithAdminPassword(password)
-                        .WithNewDataDisk(10)
-                        .WithNewDataDisk(dataDiskCreatable)
-                        .WithExistingDataDisk(dataDisk)
-                        .WithSize(VirtualMachineSizeTypes.Parse("Standard_D2a_v4"))
-                        .CreateAsync();
+                // Create related network resource
+                //
+                var vnetData = new VirtualNetworkData()
+                {
+                    Location = region,
+                    AddressPrefixes = { "10.0.0.0/16" },
+                    Subnets = { new SubnetData() { Name = subnetName, AddressPrefix = "10.0.0.0/28" } }
+                };
+                var vnet = (await resourceGroup.GetVirtualNetworks()
+                    .CreateOrUpdateAsync(WaitUntil.Completed, vnetName, vnetData)).Value;
+                var subnet = (await vnet.GetSubnets().GetAsync(subnetName)).Value;
+
+                var nicData = new NetworkInterfaceData()
+                {
+                    Location = region,
+                    IPConfigurations = {
+                        new NetworkInterfaceIPConfigurationData()
+                        {
+                            Name = ipConfigName,
+                            PrivateIPAllocationMethod = NetworkIPAllocationMethod.Dynamic,
+                            Primary = false,
+                            Subnet = new SubnetData()
+                            {
+                                Id = subnet.Id
+                            }
+                        }
+                    }
+                };
+                var nic = (await resourceGroup.GetNetworkInterfaces()
+                    .CreateOrUpdateAsync(WaitUntil.Completed, nicName, nicData)).Value;
+
+                var vmData = new VirtualMachineData(region)
+                {
+                    HardwareProfile = new VirtualMachineHardwareProfile()
+                    {
+                        VmSize = VirtualMachineSizeType.StandardDS1V2
+                    },
+                    OSProfile = new VirtualMachineOSProfile()
+                    {
+                        ComputerName = windowsVmName,
+                        AdminUsername = userName,
+                        AdminPassword = password
+                    },
+                    NetworkProfile = new VirtualMachineNetworkProfile()
+                    {
+                        NetworkInterfaces =
+                        {
+                            new VirtualMachineNetworkInterfaceReference()
+                            {
+                                Id = nic.Id,
+                                Primary = true,
+                            }
+                        }
+                    },
+                    StorageProfile = new VirtualMachineStorageProfile()
+                    {
+                        OSDisk = new VirtualMachineOSDisk(DiskCreateOptionType.FromImage)
+                        {
+                            Name = windowsVmName,
+                            OSType = SupportedOperatingSystemType.Windows,
+                            Caching = CachingType.ReadWrite,
+                            ManagedDisk = new()
+                            {
+                                StorageAccountType = StorageAccountType.StandardLrs
+                            }
+                        },
+                        DataDisks =
+                        {
+                            new VirtualMachineDataDisk(1, DiskCreateOptionType.Empty)
+                            {
+                                DiskSizeGB = 100,
+                                ManagedDisk = new()
+                                {
+                                    StorageAccountType = StorageAccountType.StandardLrs
+                                }
+                            },
+                            new VirtualMachineDataDisk(2, DiskCreateOptionType.Empty)
+                            {
+                                DiskSizeGB = 10,
+                                Caching = CachingType.ReadWrite,
+                                ManagedDisk = new()
+                                {
+                                    StorageAccountType = StorageAccountType.StandardLrs
+                                }
+                            },
+                            new VirtualMachineDataDisk(3, DiskCreateOptionType.Attach)
+                            {
+                                ManagedDisk = new()
+                                {
+                                    Id = dataDisk.Id
+                                }
+                            }
+                        },
+                        ImageReference = new ImageReference()
+                        {
+                            Publisher = "MicrosoftWindowsServer",
+                            Offer = "WindowsServer",
+                            Sku = "2016-Datacenter",
+                            Version = "latest",
+                        }
+                    },
+                };
+
+                var windowsVM = (await resourceGroup.GetVirtualMachines()
+                    .CreateOrUpdateAsync(WaitUntil.Completed, windowsVmName, vmData)).Value;
 
                 var t2 = new DateTime();
                 Utilities.Log($"Created VM: (took {(t2 - t1).TotalSeconds} seconds) " + windowsVM.Id);
-                // Print virtual machine details
-                Utilities.PrintVirtualMachine(windowsVM);
-
-                // Get the network where Windows VM is hosted
-                var network = windowsVM.GetPrimaryNetworkInterface().PrimaryIPConfiguration.GetNetwork();
 
                 //=============================================================
                 // Create a Linux VM in the same virtual network
 
                 Utilities.Log("Creating a Linux VM in the network");
 
-                var linuxVM = await azure.VirtualMachines.Define(linuxVmName)
-                        .WithRegion(region)
-                        .WithExistingResourceGroup(rgName)
-                        .WithExistingPrimaryNetwork(network)
-                        .WithSubnet("subnet1") // Referencing the default subnet name when no name specified at creation
-                        .WithPrimaryPrivateIPAddressDynamic()
-                        .WithoutPrimaryPublicIPAddress()
-                        .WithPopularLinuxImage(KnownLinuxVirtualMachineImage.UbuntuServer16_04_Lts)
-                        .WithRootUsername(userName)
-                        .WithRootPassword(password)
-                        .WithSize(VirtualMachineSizeTypes.Parse("Standard_D2a_v4"))
-                        .CreateAsync();
+                var nicData2 = new NetworkInterfaceData()
+                {
+                    Location = region,
+                    IPConfigurations = {
+                        new NetworkInterfaceIPConfigurationData()
+                        {
+                            Name = ipConfigName2,
+                            PrivateIPAllocationMethod = NetworkIPAllocationMethod.Dynamic,
+                            Primary = false,
+                            Subnet = new SubnetData()
+                            {
+                                Id = subnet.Id
+                            }
+                        }
+                    }
+                };
+                var nic2 = (await resourceGroup.GetNetworkInterfaces()
+                    .CreateOrUpdateAsync(WaitUntil.Completed, nicName2, nicData2)).Value;
+
+                var vmData2 = new VirtualMachineData(region)
+                {
+                    HardwareProfile = new VirtualMachineHardwareProfile()
+                    {
+                        VmSize = VirtualMachineSizeType.StandardDS1V2
+                    },
+                    OSProfile = new VirtualMachineOSProfile()
+                    {
+                        ComputerName = linuxVmName,
+                        AdminUsername = userName,
+                        AdminPassword = password
+                    },
+                    NetworkProfile = new VirtualMachineNetworkProfile()
+                    {
+                        NetworkInterfaces =
+                        {
+                            new VirtualMachineNetworkInterfaceReference()
+                            {
+                                Id = nic2.Id,
+                                Primary = true,
+                            }
+                        }
+                    },
+                    StorageProfile = new VirtualMachineStorageProfile()
+                    {
+                        OSDisk = new VirtualMachineOSDisk(DiskCreateOptionType.FromImage)
+                        {
+                            Caching = CachingType.ReadWrite,
+                            ManagedDisk = new()
+                            {
+                                StorageAccountType = StorageAccountType.StandardLrs
+                            }
+                        },
+                        ImageReference = new ImageReference()
+                        {
+                            Publisher = "Canonical",
+                            Offer = "UbuntuServer",
+                            Sku = "16.04-LTS",
+                            Version = "latest",
+                        }
+                    },
+                };
+
+                var linuxVM = (await resourceGroup.GetVirtualMachines()
+                    .CreateOrUpdateAsync(WaitUntil.Completed, linuxVmName, vmData2)).Value;
 
                 Utilities.Log("Created a Linux VM (in the same virtual network): " + linuxVM.Id);
-                Utilities.PrintVirtualMachine(linuxVM);
 
                 //=============================================================
                 // Update - Tag the virtual machine
-
-                await linuxVM.Update()
-                        .WithTag("who-rocks-on-linux", "java")
-                        .WithTag("where", "on azure")
-                        .ApplyAsync();
+                var patch = new VirtualMachinePatch()
+                {
+                    Tags =
+                    {
+                        {"who-rocks-on-linux", "java" },
+                        { "where", "on azure"}
+                    }
+                };
+                linuxVM = (await linuxVM.UpdateAsync(WaitUntil.Completed, patch)).Value;
 
                 Utilities.Log("Tagged Linux VM: " + linuxVM.Id);
 
                 //=============================================================
                 // Update - Add a data disk on Windows VM.
-
-                await windowsVM.Update()
-                        .WithNewDataDisk(200)
-                        .ApplyAsync();
+                var patch2 = new VirtualMachinePatch()
+                {
+                    StorageProfile = new VirtualMachineStorageProfile()
+                    {
+                        DataDisks =
+                        {
+                            new VirtualMachineDataDisk(4, DiskCreateOptionType.Empty)
+                            {
+                                DiskSizeGB = 200,
+                                Caching = CachingType.ReadWrite,
+                                ManagedDisk = new()
+                                {
+                                    StorageAccountType = StorageAccountType.StandardLrs
+                                }
+                            }
+                        }
+                    }
+                };
+                windowsVM = (await windowsVM.UpdateAsync(WaitUntil.Completed, patch2)).Value;
 
                 Utilities.Log("Expanded VM " + windowsVM.Id + "'s OS and data disks");
-                Utilities.PrintVirtualMachine(windowsVM);
                 
                 //=============================================================
                 // List virtual machines in the resource group
 
-                var resourceGroupName = windowsVM.ResourceGroupName;
-
                 Utilities.Log("Printing list of VMs =======");
 
-                foreach (var virtualMachine in await azure.VirtualMachines.ListByResourceGroupAsync(resourceGroupName))
+                await foreach (var virtualMachine in resourceGroup.GetVirtualMachines().GetAllAsync())
                 {
-                    Utilities.PrintVirtualMachine(virtualMachine);
+                    Utilities.Log(virtualMachine.Data.Name);
                 }
 
                 //=============================================================
                 // Delete the virtual machine
                 Utilities.Log("Deleting VM: " + windowsVM.Id);
 
-                await azure.VirtualMachines.DeleteByIdAsync(windowsVM.Id);
+                await windowsVM.DeleteAsync(WaitUntil.Completed);
 
                 Utilities.Log("Deleted VM: " + windowsVM.Id);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
             }
             finally
             {
                 try
                 {
-                    Utilities.Log("Deleting Resource Group: " + rgName);
-                    await azure.ResourceGroups.DeleteByNameAsync(rgName);
-                    Utilities.Log("Deleted Resource Group: " + rgName);
+                    if (_resourceGroupId is not null)
+                    {
+                        Console.WriteLine($"Deleting Resource Group: {_resourceGroupId}");
+                        await client.GetResourceGroupResource(_resourceGroupId).DeleteAsync(WaitUntil.Completed);
+                        Console.WriteLine($"Deleted Resource Group: {_resourceGroupId}");
+                    }
                 }
-                catch (NullReferenceException)
+                catch (Exception ex)
                 {
-                    Utilities.Log("Did not create any resources in Azure. No clean up is necessary");
-                }
-                catch (Exception g)
-                {
-                    Utilities.Log(g);
+                    Utilities.Log(ex);
                 }
             }
         }
 
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             try
             {
-                //=============================================================
+                //=================================================================
                 // Authenticate
-                var credentials = SdkContext.AzureCredentialsFactory.FromFile(Environment.GetEnvironmentVariable("AZURE_AUTH_LOCATION"));
+                var credential = new DefaultAzureCredential();
 
-                var azure = Azure
-                    .Configure()
-                    .WithLogLevel(HttpLoggingDelegatingHandler.Level.Basic)
-                    .Authenticate(credentials)
-                    .WithDefaultSubscription();
+                var subscriptionId = Environment.GetEnvironmentVariable("AZURE_SUBSCRIPTION_ID");
+                // you can also use `new ArmClient(credential)` here, and the default subscription will be the first subscription in your list of subscription
+                var client = new ArmClient(credential, subscriptionId);
 
-                // Print selected subscription
-                Utilities.Log("Selected subscription: " + azure.SubscriptionId);
-
-                RunSampleAsync(azure).GetAwaiter().GetResult();
+                await RunSample(client);
             }
             catch (Exception ex)
             {
