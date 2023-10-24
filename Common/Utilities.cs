@@ -80,17 +80,17 @@ namespace Azure.ResourceManager.Samples.Common
                 Location = resourceGroup.Data.Location,
                 AddressPrefixes = { "10.10.0.0/16" },
                 Subnets =
-                    {
-                        new SubnetData() { Name = "subnet1", AddressPrefix = "10.10.1.0/24"},
-                        new SubnetData() { Name = "subnet2", AddressPrefix = "10.10.2.0/24"},
-                    },
+                {
+                    new SubnetData() { Name = "subnet1", AddressPrefix = "10.10.1.0/24"},
+                    new SubnetData() { Name = "subnet2", AddressPrefix = "10.10.2.0/24"},
+                },
             };
             var vnetLro = await resourceGroup.GetVirtualNetworks().CreateOrUpdateAsync(WaitUntil.Completed, vnetName, vnetInput);
             Utilities.Log($"Created a virtual network: {vnetLro.Value.Data.Name}");
             return vnetLro.Value;
         }
 
-        public static async Task<NetworkInterfaceResource> CreateNetworkInterface(ResourceGroupResource resourceGroup, ResourceIdentifier subnetId, ResourceIdentifier publicIpId, string nicName)
+        public static async Task<NetworkInterfaceResource> CreateNetworkInterface(ResourceGroupResource resourceGroup, ResourceIdentifier subnetId, string nicName)
         {
             nicName = string.IsNullOrEmpty(nicName) ? CreateRandomName("nic") : nicName;
 
@@ -108,10 +108,6 @@ namespace Azure.ResourceManager.Samples.Common
                             {
                                 Id = subnetId
                             },
-                            PublicIPAddress = new PublicIPAddressData()
-                            {
-                                Id  = publicIpId
-                            }
                         }
                     }
             };
@@ -120,26 +116,20 @@ namespace Azure.ResourceManager.Samples.Common
             return networkInterfaceLro.Value;
         }
 
-        public static async Task<PublicIPAddressResource> CreatePublicIP(ResourceGroupResource resourceGroup, string publicIpName)
+        public static void PrintVirtualMachine(VirtualMachineResource vm)
         {
-            publicIpName = string.IsNullOrEmpty(publicIpName) ? CreateRandomName("pip") : publicIpName;
-
-            Utilities.Log("Creating a public IP address...");
-            PublicIPAddressData publicIPInput = new PublicIPAddressData()
+            Utilities.Log("VM name: " + vm.Data.Name);
+            Utilities.Log("Image offer: " + vm.Data.StorageProfile.ImageReference.Offer);
+            Utilities.Log("Image sku: " + vm.Data.StorageProfile.ImageReference.Sku);
+            Utilities.Log("Network interface name: " + vm.Data.NetworkProfile.NetworkInterfaces.First().Id.Name);
+            Utilities.Log("OSDisk name: " + vm.Data.StorageProfile.OSDisk.Name);
+            Utilities.Log("Data disk count: " + vm.Data.StorageProfile.DataDisks.Count);
+            foreach (var disk in vm.Data.StorageProfile.DataDisks)
             {
-                Location = resourceGroup.Data.Location,
-                Sku = new PublicIPAddressSku()
-                {
-                    Name = PublicIPAddressSkuName.Standard,
-                    Tier = PublicIPAddressSkuTier.Regional
-                },
-                PublicIPAllocationMethod = NetworkIPAllocationMethod.Static,
-                DnsSettings = new PublicIPAddressDnsSettings { DomainNameLabel = publicIpName },
-            };
-            _ = await resourceGroup.GetPublicIPAddresses().CreateOrUpdateAsync(WaitUntil.Completed, publicIpName, publicIPInput);
-            var publicIPLro = await resourceGroup.GetPublicIPAddresses().GetAsync(publicIpName);
-            Utilities.Log($"Created a public IP address: {publicIPLro.Value.Data.Name}");
-            return publicIPLro.Value;
+                Utilities.Log($"\tLUN: {disk.Lun}  Name: {disk.Name}  Size: {disk.DiskSizeGB}GB  ");
+            }
+            Utilities.Log("Tag count: " + vm.Data.Tags.Count);
+            Utilities.Log();
         }
     }
 }
