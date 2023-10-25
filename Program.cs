@@ -64,7 +64,7 @@ namespace ManageVirtualMachineAsync
 
                 // Create two data disk to attach to VM
                 //
-                Utilities.Log("Creating three empty managed disk");
+                Utilities.Log("Creating two empty managed disk");
                 ManagedDiskData diskInput1 = new ManagedDiskData(resourceGroup.Data.Location)
                 {
                     Sku = new DiskSku()
@@ -240,7 +240,7 @@ namespace ManageVirtualMachineAsync
                 await linuxVM.AddTagAsync("who-rocks-on-linux", "java");
                 await linuxVM.AddTagAsync("where", "on azure");
 
-                Utilities.Log("Tagged Linux VM: " + linuxVM.Id);
+                Utilities.Log("Tagged Linux VM: " + linuxVM.Id.Name);
 
                 //=============================================================
                 // Update - Add a data disk on Windows VM.
